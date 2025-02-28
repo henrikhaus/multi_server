@@ -1,0 +1,13 @@
+enum Color:byte { Red = 0, Blue, Green, Purple, Yellow, Orange, Cyan, Pink = 7}
+
+table Player {
+    x: float32;
+    y: float32;
+    color: Color = Red;
+}
+
+table PlayersList {
+  players: [Player];
+}
+
+root_type PlayersList;

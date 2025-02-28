@@ -1,0 +1,7 @@
+enum PlayerCommand:uint8 { Move_right, Move_left, Jump }
+
+table PlayerCommands {
+    commands: [PlayerCommand];
+}
+
+root_type PlayerCommands;

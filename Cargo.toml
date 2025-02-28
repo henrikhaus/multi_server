@@ -1,0 +1,8 @@
+[package]
+name = "multi_server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+flatbuffers = "25.2.10"
+serde = { version = "1.0.218", features = ["derive"] }
