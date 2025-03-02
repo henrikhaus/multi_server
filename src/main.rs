@@ -102,6 +102,7 @@ fn tick(players: &mut MutexGuard<Vec<Player>>,
                 _ => {}
             }
         } else {
+            println!("New player connected: {}", addr);
             players.push(Player::new(*addr));
         }
     }
@@ -128,13 +129,8 @@ fn tick(players: &mut MutexGuard<Vec<Player>>,
             players: Some(players_vec),
         },
     );
-
     builder.finish(players_list, None);
-
-
     let bytes = builder.finished_data();
-    println!("{:?}", root::<PlayersList>(bytes).unwrap().players());
-
     for p in players.iter() {
         let _ = socket.send_to(bytes, p.ip);
     }
@@ -144,8 +140,6 @@ fn tick(players: &mut MutexGuard<Vec<Player>>,
 
 fn handle_packet(packet: &[u8], src_addr: SocketAddr, commands: &mut MutexGuard<Vec<(SocketAddr, PlayerCommand)>>) {
     let player_commands = root::<PlayerCommands>(packet).expect("No command received");
-    println!("{:?}", player_commands.commands().unwrap());
-
     if let Some(cmd_list) = player_commands.commands() {
         for cmd in cmd_list {
             commands.push((src_addr, cmd));

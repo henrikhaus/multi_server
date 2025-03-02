@@ -1,4 +1,4 @@
-enum Color:byte { Red = 0, Blue, Green, Purple, Yellow, Orange, Cyan, Pink = 7}
+enum Color:byte { Red = 0, Blue, Green, Purple, Black, Orange, Cyan, Pink = 7}
 
 table Player {
     x: float32;
