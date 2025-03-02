@@ -1,5 +1,6 @@
 use std::net::{SocketAddr, UdpSocket};
 use std::io::Result;
+use std::ops::Index;
 use std::os::unix::raw::time_t;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
@@ -21,8 +22,8 @@ const SCREEN_HEIGHT: usize = 360;
 const SCREEN_WIDTH: usize = 640;
 const TICK_DURATION: Duration = Duration::from_millis(16);
 const SERVER_ADDR: &str = "127.0.0.1:9000";
-const PLAYER_SIZE: f32 = 16.0;
 
+#[derive(Clone, Copy)]
 struct Vec2 {
     x: f32,
     y: f32,
@@ -42,6 +43,7 @@ struct Player {
     jump_force: f32,
     jump_timer: f32,
     color: Color,
+    size: f32,
 }
 
 impl Player {
@@ -54,6 +56,7 @@ impl Player {
             jump_force: 10.0,
             jump_timer: 0.0,
             color: Color::Red,
+            size: 16.0,
         }
     }
 }
@@ -111,8 +114,13 @@ fn tick(players: &mut MutexGuard<Vec<Player>>,
             players.push(Player::new(*addr));
         }
     }
-
     physics(players);
+    let player_forces = collision(players);
+    for (i, force) in player_forces {
+        players[i].vel.x = force.x;
+        players[i].vel.y = force.y;
+    }
+
 
     let mut builder = FlatBufferBuilder::with_capacity(2048);
     let players_offsets: Vec<_> = players
@@ -143,6 +151,7 @@ fn tick(players: &mut MutexGuard<Vec<Player>>,
     commands.clear();
 }
 
+
 fn handle_packet(packet: &[u8], src_addr: SocketAddr, commands: &mut MutexGuard<Vec<(SocketAddr, PlayerCommand)>>) {
     let player_commands = root::<PlayerCommands>(packet).expect("No command received");
     if let Some(cmd_list) = player_commands.commands() {
@@ -150,6 +159,27 @@ fn handle_packet(packet: &[u8], src_addr: SocketAddr, commands: &mut MutexGuard<
             commands.push((src_addr, cmd));
         }
     }
+}
+
+fn collision(players: &[Player]) -> Vec<(usize, Vec2)> {
+    let mut player_forces = vec![];
+    for (i, p1) in players.iter().enumerate() {
+        for p2 in players {
+            if p1.ip == p2.ip {
+                continue;
+            }
+            //player 1 top to player 2 bottom
+            if p1.pos.y <= p2.pos.y + p2.size && p2.pos.y <= p1.pos.y + p1.size {
+                //player 1 left to player 2 right
+                if p1.pos.x <= p2.pos.x + p2.size && p2.pos.x <= p1.pos.x + p1.size {
+                    println!("COLLISION!");
+                    let force = Vec2 { x: (p1.vel.x + p2.vel.x) / 2.0, y: (p1.vel.y + p2.vel.y) / 2.0 };
+                    player_forces.push((i, force));
+                }
+            }
+        }
+    }
+    player_forces
 }
 
 fn physics(players: &mut [Player]) {
@@ -160,16 +190,16 @@ fn physics(players: &mut [Player]) {
         player.vel.y += GRAVITY;
         player.jump_timer += 0.16;
 
-        if player.pos.y > SCREEN_HEIGHT as f32 - PLAYER_SIZE {
-            player.pos.y = SCREEN_HEIGHT as f32 - PLAYER_SIZE;
+        if player.pos.y > SCREEN_HEIGHT as f32 - player.size {
+            player.pos.y = SCREEN_HEIGHT as f32 - player.size;
             player.vel.y = 0.0;
         }
         if player.pos.y < 0.0 {
             player.pos.y = 0.0;
             player.vel.y = 0.0;
         }
-        if player.pos.x > SCREEN_WIDTH as f32 - PLAYER_SIZE {
-            player.pos.x = SCREEN_WIDTH as f32 - PLAYER_SIZE;
+        if player.pos.x > SCREEN_WIDTH as f32 - player.size {
+            player.pos.x = SCREEN_WIDTH as f32 - player.size;
             player.vel.x = 0.0;
         }
         if player.pos.x < 0.0 {
@@ -192,7 +222,7 @@ fn handle_move_left(player: &mut Player) {
 }
 
 fn handle_jump(player: &mut Player) {
-    if player.pos.y >= SCREEN_HEIGHT as f32 - PLAYER_SIZE && player.jump_timer > JUMP_CD {
+    if player.pos.y >= SCREEN_HEIGHT as f32 - player.size && player.jump_timer > JUMP_CD {
         player.vel.y -= player.jump_force;
         player.jump_timer = 0.0;
     };
