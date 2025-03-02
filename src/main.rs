@@ -1,23 +1,27 @@
 use std::net::{SocketAddr, UdpSocket};
 use std::io::Result;
+use std::os::unix::raw::time_t;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
-use flatbuffers::{root, root_unchecked, FlatBufferBuilder};
+use flatbuffers::{root, FlatBufferBuilder};
 
 #[allow(dead_code, unused_imports)]
 #[path = "../schema_generated.rs"]
 mod schema_generated;
 pub use schema_generated::Player as SchemaPlayer;
-use crate::schema_generated::{PlayerCommand, PlayerCommands, Color, PlayerArgs, root_as_player_commands, root_as_player_commands_unchecked, size_prefixed_root_as_player_commands_unchecked, size_prefixed_root_as_player_commands, PlayersList};
+use crate::schema_generated::{PlayerCommand, PlayerCommands, Color, PlayerArgs};
 
 const MAX_PLAYERS: usize = 10;
 const GRAVITY: f32 = 1.0;
 const FRICTION: f32 = 0.8;
-const SCREEN_HEIGHT: usize = 200;
-const SCREEN_WIDTH: usize = 300;
+const JUMP_CD: f32 = 0.3;
+const SCREEN_HEIGHT: usize = 360;
+const SCREEN_WIDTH: usize = 640;
 const TICK_DURATION: Duration = Duration::from_millis(16);
+const SERVER_ADDR: &str = "127.0.0.1:9000";
+const PLAYER_SIZE: f32 = 16.0;
 
 struct Vec2 {
     x: f32,
@@ -36,6 +40,7 @@ struct Player {
     vel: Vec2,
     acc: f32,
     jump_force: f32,
+    jump_timer: f32,
     color: Color,
 }
 
@@ -45,17 +50,17 @@ impl Player {
             ip,
             pos: Vec2::zero(),
             vel: Vec2::zero(),
-            acc: 1.0,
+            acc: 0.75,
             jump_force: 10.0,
+            jump_timer: 0.0,
             color: Color::Red,
         }
     }
 }
 
 fn main() -> Result<()> {
-    let socket = Arc::new(UdpSocket::bind("127.0.0.1:9000")?);
-    println!("UDP running on 127.0.0.1:9000...");
-    //let mut players: [&mut Player; MAX_PLAYERS] = std::array::from_fn(|_| { &mut Player::new() });
+    let socket = Arc::new(UdpSocket::bind(SERVER_ADDR)?);
+    println!("UDP running on {}...", SERVER_ADDR);
     let players: Arc<Mutex<Vec<Player>>> = Arc::new(Mutex::new(Vec::new()));
     let commands: Arc<Mutex<Vec<(SocketAddr, PlayerCommand)>>> = Arc::new(Mutex::new(Vec::new()));
 
@@ -153,17 +158,18 @@ fn physics(players: &mut [Player]) {
         player.pos.y = player.pos.y + player.vel.y;
         player.vel.x *= FRICTION;
         player.vel.y += GRAVITY;
+        player.jump_timer += 0.16;
 
-        if player.pos.y > SCREEN_HEIGHT as f32 - 10.0 {
-            player.pos.y = SCREEN_HEIGHT as f32 - 10.0;
+        if player.pos.y > SCREEN_HEIGHT as f32 - PLAYER_SIZE {
+            player.pos.y = SCREEN_HEIGHT as f32 - PLAYER_SIZE;
             player.vel.y = 0.0;
         }
         if player.pos.y < 0.0 {
             player.pos.y = 0.0;
             player.vel.y = 0.0;
         }
-        if player.pos.x > SCREEN_WIDTH as f32 - 10.0 {
-            player.pos.x = SCREEN_WIDTH as f32 - 10.0;
+        if player.pos.x > SCREEN_WIDTH as f32 - PLAYER_SIZE {
+            player.pos.x = SCREEN_WIDTH as f32 - PLAYER_SIZE;
             player.vel.x = 0.0;
         }
         if player.pos.x < 0.0 {
@@ -186,5 +192,8 @@ fn handle_move_left(player: &mut Player) {
 }
 
 fn handle_jump(player: &mut Player) {
-    player.vel.y -= player.jump_force;
+    if player.pos.y >= SCREEN_HEIGHT as f32 - PLAYER_SIZE && player.jump_timer > JUMP_CD {
+        player.vel.y -= player.jump_force;
+        player.jump_timer = 0.0;
+    };
 }
