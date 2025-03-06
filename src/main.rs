@@ -101,6 +101,10 @@ fn main() -> Result<()> {
 fn tick(players: &mut MutexGuard<Vec<Player>>,
         commands: &mut Vec<(SocketAddr, PlayerCommand)>,
         socket: &UdpSocket) {
+    let mut prev_pos: Vec<(usize, Vec2)> = vec![];
+    for (index, p) in players.iter().enumerate() {
+        prev_pos.push((index, p.pos))
+    }
     for (addr, cmd) in commands.iter() {
         if let Some(player) = get_player_by_ip(addr, players) {
             match cmd {
@@ -114,11 +118,14 @@ fn tick(players: &mut MutexGuard<Vec<Player>>,
             players.push(Player::new(*addr));
         }
     }
+
     physics(players);
     let player_forces = collision(players);
-    for (i, force) in player_forces {
+    for (i, force, pos) in player_forces {
         players[i].vel.x = force.x;
         players[i].vel.y = force.y;
+        players[i].pos.x = pos.x;
+        players[i].pos.y = pos.y;
     }
 
 
@@ -161,20 +168,36 @@ fn handle_packet(packet: &[u8], src_addr: SocketAddr, commands: &mut MutexGuard<
     }
 }
 
-fn collision(players: &[Player]) -> Vec<(usize, Vec2)> {
+fn collision(players: &[Player]) -> Vec<(usize, Vec2, Vec2)> {
     let mut player_forces = vec![];
     for (i, p1) in players.iter().enumerate() {
         for p2 in players {
             if p1.ip == p2.ip {
                 continue;
             }
-            //player 1 top to player 2 bottom
-            if p1.pos.y <= p2.pos.y + p2.size && p2.pos.y <= p1.pos.y + p1.size {
-                //player 1 left to player 2 right
-                if p1.pos.x <= p2.pos.x + p2.size && p2.pos.x <= p1.pos.x + p1.size {
-                    println!("COLLISION!");
+
+            let v_overlap = p1.pos.y <= p2.pos.y + p2.size && p2.pos.y <= p1.pos.y + p1.size;
+            let h_overlap = p1.pos.x <= p2.pos.x + p2.size && p2.pos.x <= p1.pos.x + p1.size;
+            let overlap = v_overlap && h_overlap;
+
+            let p1_top = overlap && p1.vel.y > p2.vel.y;
+            let p1_bottom = overlap && p1.vel.y < p2.vel.y;
+            let p1_left = overlap && p1.vel.x > p2.vel.x;
+            let p1_right = overlap && p1.vel.x < p2.vel.x;
+
+            if overlap {
+                /*if p1_top {
+                    let force = Vec2 { x: (p1.vel.x + p2.vel.x) / 2.0, y: 0.0 };
+                    let pos = Vec2 { x: p1.pos.x, y: p2.pos.y - p1.size };
+                    player_forces.push((i, force, pos));
+                } else*/ if p1_left {
                     let force = Vec2 { x: (p1.vel.x + p2.vel.x) / 2.0, y: (p1.vel.y + p2.vel.y) / 2.0 };
-                    player_forces.push((i, force));
+                    let pos = Vec2 { x: p2.pos.x - p1.size, y: p1.pos.y };
+                    player_forces.push((i, force, pos));
+                } else if p1_right {
+                    let force = Vec2 { x: (p1.vel.x + p2.vel.x) / 2.0, y: (p1.vel.y + p2.vel.y) / 2.0 };
+                    let pos = Vec2 { x: p1.pos.x, y: p1.pos.y };
+                    player_forces.push((i, force, pos));
                 }
             }
         }
